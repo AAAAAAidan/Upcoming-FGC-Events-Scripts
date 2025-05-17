@@ -2,12 +2,12 @@
 // 1. Get tournaments from start.gg API and insert/update sheet rows
 // 2. Add JSDoc and general comments
 // 3. Split sheets by tournament location (US state and then country)
-// 4. Get tournament data from Challonge API
+// 4. Archive or delete past data
 
 function updateTournamentListing() {
   const properties = PropertiesService.getScriptProperties()
   let pageNumber = Number(properties.getProperty("pageNumber"))
-  while (++pageNumber < 10) {
+  while (pageNumber) {
     const state = "AZ"
     const tournamentObjects = getTournamentsByPageAndState(pageNumber, state)
     const dataRows = getDataRows(tournamentObjects)
@@ -17,20 +17,22 @@ function updateTournamentListing() {
 }
 
 function getTournamentsByPageAndState(pageNumber, state) {
-  // Query the 10 most recent tournaments with data from each event and top 3 standings included
+  // Query upcoming tournaments and events
   const tournamentsByState = `
-    query TournamentsByState(\$page: Int = 1, \$perPage: Int = 10, \$state: String!) {
+    query TournamentsByState(\$page: Int = 1, \$perPage: Int = 10, \$state: String, \$startAt: Timestamp!) {
       tournaments(query: {
         page: \$page
         perPage: \$perPage
         filter: {
           addrState: \$state
+          afterDate: \$startAt
         }
       }) {
         nodes {
           id
           slug
           name
+          startAt
           events {
             id
             slug
@@ -40,18 +42,6 @@ function getTournamentsByPageAndState(pageNumber, state) {
             videogame {
               id
               name
-            }
-            standings(query: {
-              perPage: 3,
-              page: 1
-            }) {
-              nodes {
-                placement
-                entrant {
-                  id
-                  name
-                }
-              }
             }
           }
         }
@@ -64,7 +54,8 @@ function getTournamentsByPageAndState(pageNumber, state) {
     "variables": JSON.stringify({
       page: pageNumber,
       perPage: 10,
-      state: state
+      state: state,
+      startAt: Math.floor(new Date().getTime() / 1000)
     })
   }
   const apiKey = PropertiesService.getScriptProperties().getProperty("apiKey")
@@ -100,24 +91,7 @@ function getDataRows(tournamentObjects) {
         "name": `${tournament.name}: ${event.name}`,
         "game": event.videogame.name,
         "url": eventUrl,
-        "entrants": event.numEntrants,
-        "firstPlace": null,
-        "secondPlace": null,
-        "thirdPlace": null
       }
-      event.standings.nodes.forEach(standing => {
-        switch (standing.placement) {
-          case 1:
-            eventDataForSheetRow.firstPlace = standing.entrant.name
-            break;
-          case 2:
-            eventDataForSheetRow.secondPlace = standing.entrant.name
-            break;
-          case 3:
-            eventDataForSheetRow.thirdPlace = standing.entrant.name
-            break;
-        }
-      })
       dataRows.push(Object.values(eventDataForSheetRow))
     })
   })
