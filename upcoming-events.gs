@@ -1,25 +1,34 @@
 // TODO
-// 1. Get tournaments from start.gg API and insert/update sheet rows
-// 2. Add JSDoc and general comments
-// 3. Split sheets by tournament location (US state and then country)
-// 4. Archive or delete past data
+// 1. Split sheets by tournament location (US state and then country)
+// 2. Archive or delete past data
 
-function updateTournamentListing() {
-  const properties = PropertiesService.getScriptProperties()
-  let pageNumber = Number(properties.getProperty("pageNumber"))
-  while (pageNumber) {
+/**
+ * Update and/or add upcoming events in FGC Event Listing sheets.
+ */
+function updateEventListing() {
+  let pageNumber = 0
+  // Pages are expected to return up to 10 tournaments
+  while (++pageNumber) {
     const state = "AZ"
-    const tournamentObjects = getTournamentsByPageAndState(pageNumber, state)
-    const dataRows = getDataRows(tournamentObjects)
-    insertSheetDataRows(dataRows, state)
+    const tournaments = getTournaments(pageNumber, state)
+    const rows = getRowValues(tournaments)
+    updateSheetData(rows, state)
+    // If there are no results left, end the loop
+    if (rows.length < 10) {
+      break
+    }
   }
-  properties.setProperty("pageNumber", pageNumber)
 }
 
-function getTournamentsByPageAndState(pageNumber, state) {
-  // Query upcoming tournaments and events
-  const tournamentsByState = `
-    query TournamentsByState(\$page: Int = 1, \$perPage: Int = 10, \$state: String, \$startAt: Timestamp!) {
+/**
+ * Get a 10 result page of upcoming tournaments in the given state.
+ * @param {Number} pageNumber - A page number.
+ * @param {String} state - A two letter state abbreviation.
+ * @return {Array[Object]} An array of tournaments. Refer to start.gg's GraphQL schema.
+ */
+function getTournaments(pageNumber, state) {
+  const tournamentsByStateAndStartTimeQuery = `
+    query tournamentsByStateAndStartTime(\$page: Int = 1, \$perPage: Int = 10, \$state: String, \$startAt: Timestamp!) {
       tournaments(query: {
         page: \$page
         perPage: \$perPage
@@ -33,12 +42,9 @@ function getTournamentsByPageAndState(pageNumber, state) {
           slug
           name
           startAt
+          venueAddress
           events {
             id
-            slug
-            startAt
-            name
-            numEntrants
             videogame {
               id
               name
@@ -48,64 +54,78 @@ function getTournamentsByPageAndState(pageNumber, state) {
       }
     }
   `
+  // Convert the start time from a JavaScript date to a Unix timestamp
+  const queryVariables = {
+    page: pageNumber,
+    perPage: 10,
+    state: state,
+    startAt: Math.floor(new Date().getTime() / 1000),
+  }
   const formData = {
-    "operationName": "TournamentsByState",
-    "query": tournamentsByState,
-    "variables": JSON.stringify({
-      page: pageNumber,
-      perPage: 10,
-      state: state,
-      startAt: Math.floor(new Date().getTime() / 1000)
-    })
+    "operationName": "tournamentsByStateAndStartTime",
+    "query": tournamentsByStateAndStartTimeQuery,
+    "variables": JSON.stringify(queryVariables),
   }
   const apiKey = PropertiesService.getScriptProperties().getProperty("apiKey")
   const headers = {
-    "Authorization": `Bearer ${apiKey}`
+    "Authorization": `Bearer ${apiKey}`,
   }
   const options = {
     "method": "POST",
     "headers": headers,
-    "payload": formData
+    "payload": formData,
   }
   const url = "https://api.start.gg/gql/alpha"
   const response = UrlFetchApp.fetch(url, options)
   const json = JSON.parse(response.getContentText())
-  return json.data.tournaments
+  console.log(`${json.data.tournaments.nodes.length} upcoming tournaments found`)
+  return json.data.tournaments.nodes
 }
 
-function getDataRows(tournamentObjects) {
-  const dataRows = []
-  tournamentObjects.nodes.forEach(tournament => {
-    const startGgUrl = "https://www.start.gg/"
-    const tournamentUrl = startGgUrl + tournament.slug
-    console.log(`TOURNAMENT: ${tournament.name} (${tournamentUrl})`)
+/**
+ * Convert an array of tournaments from the start.gg API to an array of rows for the Google Sheets API.
+ * @param {Array[Object]} tournaments - An array of tournaments. Refer to start.gg's GraphQL schema.
+ * @return {Array[Array[Object]]} An array of row and column values.
+ */
+function getRowValues(tournaments) {
+  const rows = []
+  tournaments.forEach(tournament => {
+    const tournamentUrl = "https://www.start.gg/" + tournament.slug
+    console.log(`Tournament: ${tournament.name} (${tournamentUrl})`)
+    // Ignore any tournaments that don't have any events
     if (tournament.events === null) {
       console.log("No listed events")
       return
     }
-    tournament.events.forEach(event => {
-      const eventUrl = startGgUrl + event.slug
-      console.log(`EVENT: ${event.videogame.name}`)
-      const eventDataForSheetRow = {
-        "date": new Date(event.startAt * 1000),
-        "name": `${tournament.name}: ${event.name}`,
-        "game": event.videogame.name,
-        "url": eventUrl,
-      }
-      dataRows.push(Object.values(eventDataForSheetRow))
-    })
+    // Convert the start time from a Unix timestamp to a JavaScript date
+    const startAt = new Date(tournament.startAt * 1000)
+    // Create a forward separated list of games in the events
+    const eventGames = tournament.events.map(event => event.videogame.name).join(" / ")
+    rows.push([startAt, tournament.name, tournamentUrl, tournament.venueAddress, eventGames])
   })
-  return dataRows
+  return rows
 }
 
-function insertSheetDataRows(dataRows, sheetName) {
+/**
+ * Update or insert rows on the given sheet.
+ * @param {Array[Array[Object]]} rows - An array of row and column values.
+ * @param {String} sheetName - The name of the sheet to update.
+ */
+function updateSheetData(rows, sheetName) {
   const spreadsheet = SpreadsheetApp.openById("1AIMZepfkEIUmTYFgFY4t4wTQSXrP_YvETAB-WAwyCyM")
   const sheet = spreadsheet.getSheetByName(sheetName)
-  const rowCount = dataRows.length
-  const columnCount = dataRows[0].length
-  console.log(`Inserting ${rowCount} rows into sheet "${sheetName}"`)
-  sheet.insertRowsBefore(2, rowCount)
-  sheet.getRange(2, 1, rowCount, columnCount).setValues(dataRows)
+  console.log(`Updating/inserting ${rows.length} rows in sheet "${sheetName}"`)
+  rows.forEach(columns => {
+    const existingRow = sheet.createTextFinder(columns[2]).findNext()
+    // If a row for this tournament has already been created, update that row, else insert a new row
+    if (existingRow) {
+      sheet.getRange(existingRow.getRowIndex(), 1, 1, columns.length).setValues([columns])
+    } else {
+      sheet.insertRowsBefore(2, 1)
+      sheet.getRange(2, 1, 1, columns.length).setValues([columns])
+    }
+  })
+  // Freeze the header row and sort the sheet by date ascending
   sheet.setFrozenRows(1)
-  sheet.sort(1, false)
+  sheet.sort(1)
 }
