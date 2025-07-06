@@ -90,7 +90,7 @@ function getTournaments(pageNumber, state) {
 function getRowValues(tournaments) {
   const rows = []
   tournaments.forEach(tournament => {
-    const tournamentUrl = "https://www.start.gg/" + tournament.slug
+    const tournamentUrl = "https://www.start.gg/" + tournament.slug + "/details"
     console.log(`Tournament: ${tournament.name} (${tournamentUrl})`)
     // Ignore any tournaments that don't have any events
     if (tournament.events === null) {
