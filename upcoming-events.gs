@@ -1,6 +1,6 @@
 // TODO
-// 1. Split sheets by tournament location (US state and then country)
-// 2. Archive or delete past data
+// 1. Archive or delete past data
+// 2. Split sheets by tournament location (US state and then country)
 
 /**
  * Update and/or add upcoming events in FGC Event Listing sheets.

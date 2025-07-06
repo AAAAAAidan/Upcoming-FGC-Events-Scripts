@@ -1,5 +1,5 @@
 // TODO
-// 1. Delete or archive this file
+// 1. Delete or repurpose this file
 
 function updateTournamentListing() {
   const properties = PropertiesService.getScriptProperties()
