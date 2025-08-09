@@ -98,9 +98,10 @@ function getRowValues(tournaments) {
     }
     // Convert the start time from a Unix timestamp to a JavaScript date
     const startAt = new Date(tournament.startAt * 1000)
-    // Create a forward separated list of games in the events
-    const eventGames = tournament.events.map(event => event.videogame.name).join(" / ")
-    rows.push([startAt, tournament.name, tournamentUrl, tournament.venueAddress, eventGames])
+    // Create a forward slash separated list of games in the events, using a set to exclude duplicates
+    const gamesArray = tournament.events.map(event => event.videogame.name)
+    const gamesString = Array.from(new Set(gamesArray)).join(" / ")
+    rows.push([startAt, tournament.name, tournamentUrl, tournament.venueAddress, gamesString])
   })
   return rows
 }
