@@ -1,39 +1,35 @@
 // TODO
-// 1. Split sheets by tournament location (US state and then country)
+// 1. Include other states and countries
 
 /**
  * Update and/or add upcoming events in FGC Event Listing sheets.
  */
 function updateEventListing() {
-  let pageNumber = 0
-  // Pages are expected to return up to 10 tournaments
-  while (++pageNumber) {
-    const state = "AZ"
-    const tournaments = getTournaments(pageNumber, state)
-    const rows = getRowValues(tournaments)
-    updateSheetData(rows, state)
-    // If there are no results left, end the loop
-    if (rows.length < 10) {
-      break
-    }
-  }
+  let pageNumber = 1
+  let rows = []
+  // Update the sheet until there are no results left
+  do {
+    const tournaments = getTournaments(pageNumber)
+    rows = getRowValues(tournaments)
+    updateSheetData(rows, "Events")
+  } while (++pageNumber && rows.length > 0)
 }
 
 /**
- * Get a 10 result page of upcoming tournaments in the given state.
+ * Get a 10 result page of upcoming tournaments.
  * @param {Number} pageNumber - A page number.
- * @param {String} state - A two letter state abbreviation.
  * @return {Array[Object]} An array of tournaments. Refer to start.gg's GraphQL schema.
  */
-function getTournaments(pageNumber, state) {
-  const tournamentsByStateAndStartTimeQuery = `
-    query tournamentsByStateAndStartTime(\$page: Int = 1, \$perPage: Int = 10, \$state: String, \$startAt: Timestamp!) {
+function getTournaments(pageNumber) {
+  const tournamentsByStartTimeQuery = `
+    query tournamentsByStartTime(\$page: Int = 1, \$startAt: Timestamp!) {
       tournaments(query: {
         page: \$page
-        perPage: \$perPage
+        perPage: 100
         filter: {
-          addrState: \$state
+          addrState: "AZ"
           afterDate: \$startAt
+          hasOnlineEvents: false
         }
       }) {
         nodes {
@@ -41,6 +37,8 @@ function getTournaments(pageNumber, state) {
           slug
           name
           startAt
+          countryCode
+          addrState
           venueAddress
           events {
             id
@@ -56,16 +54,14 @@ function getTournaments(pageNumber, state) {
   // Convert the start time from a JavaScript date to a Unix timestamp
   const queryVariables = {
     page: pageNumber,
-    perPage: 10,
-    state: state,
     startAt: Math.floor(new Date().getTime() / 1000),
   }
   const formData = {
-    "operationName": "tournamentsByStateAndStartTime",
-    "query": tournamentsByStateAndStartTimeQuery,
+    "operationName": "tournamentsByStartTime",
+    "query": tournamentsByStartTimeQuery,
     "variables": JSON.stringify(queryVariables),
   }
-  const apiKey = PropertiesService.getScriptProperties().getProperty("apiKey")
+  const apiKey = PropertiesService.getScriptProperties().getProperty("startGgApiKey")
   const headers = {
     "Authorization": `Bearer ${apiKey}`,
   }
@@ -77,6 +73,13 @@ function getTournaments(pageNumber, state) {
   const url = "https://api.start.gg/gql/alpha"
   const response = UrlFetchApp.fetch(url, options)
   const json = JSON.parse(response.getContentText())
+  // If errors were returned, log them and return an empty array
+  if (json.errors) {
+    json.errors.forEach(error => {
+      console.error(error.message)
+    })
+    return []
+  }
   console.log(`${json.data.tournaments.nodes.length} upcoming tournaments found`)
   return json.data.tournaments.nodes
 }
@@ -101,7 +104,7 @@ function getRowValues(tournaments) {
     // Create a forward slash separated list of games in the events, using a set to exclude duplicates
     const gamesArray = tournament.events.map(event => event.videogame.name)
     const gamesString = Array.from(new Set(gamesArray)).join(" / ")
-    rows.push([startAt, tournament.name, tournamentUrl, tournament.venueAddress, gamesString])
+    rows.push([startAt, tournament.name, tournamentUrl, tournament.countryCode, tournament.addrState, tournament.venueAddress, gamesString])
   })
   return rows
 }
