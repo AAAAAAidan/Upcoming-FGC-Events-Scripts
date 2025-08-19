@@ -3,7 +3,7 @@
  */
 function deleteOldTournamentRows() {
   const spreadsheet = SpreadsheetApp.openById("1AIMZepfkEIUmTYFgFY4t4wTQSXrP_YvETAB-WAwyCyM")
-  const sheet = spreadsheet.getSheetByName("AZ")
+  const sheet = spreadsheet.getSheetByName("Events")
   // Freeze the header row and sort the sheet by date ascending
   sheet.setFrozenRows(1)
   sheet.sort(1)
