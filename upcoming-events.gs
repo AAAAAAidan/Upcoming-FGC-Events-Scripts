@@ -115,7 +115,7 @@ function getRowValues(tournaments) {
  * @param {String} sheetName - The name of the sheet to update.
  */
 function updateSheetData(rows, sheetName) {
-  const spreadsheet = SpreadsheetApp.openById("1AIMZepfkEIUmTYFgFY4t4wTQSXrP_YvETAB-WAwyCyM")
+  const spreadsheet = SpreadsheetApp.openById(getSpreadsheetId())
   const sheet = spreadsheet.getSheetByName(sheetName)
   console.log(`Updating/inserting ${rows.length} rows in sheet "${sheetName}"`)
   rows.forEach(columns => {

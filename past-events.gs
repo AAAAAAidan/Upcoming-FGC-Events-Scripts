@@ -2,7 +2,7 @@
  * Find and delete tournament rows where the event dates is before the current date.
  */
 function deleteOldTournamentRows() {
-  const spreadsheet = SpreadsheetApp.openById("1AIMZepfkEIUmTYFgFY4t4wTQSXrP_YvETAB-WAwyCyM")
+  const spreadsheet = SpreadsheetApp.openById(getSpreadsheetId())
   const sheet = spreadsheet.getSheetByName("Events")
   // Freeze the header row and sort the sheet by date ascending
   sheet.setFrozenRows(1)
